@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRINTPAY - Cetak Mudah. Bayar Mudah.</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- PDF.js for rendering and counting PDF pages -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- HTML5 QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        },
+                        tech: {
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+        // Initialize PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <style>
+        /* Custom scrollbars and printing animation CSS */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        
+        @keyframes printPaper {
+            0% { transform: translateY(-100%); opacity: 0; }
+            30% { opacity: 1; }
+            100% { transform: translateY(0%); opacity: 1; }
+        }
+
+        @keyframes scanLine {
+            0% { top: 0%; }
+            50% { top: 90%; }
+            100% { top: 0%; }
+        }
+
+        .animate-scan {
+            animation: scanLine 2s infinite ease-in-out;
+        }
+
+        .paper-exit {
+            animation: printPaper 3.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col justify-between selection:bg-brand-500 selection:text-white">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-800/80 backdrop-blur-md border-b border-slate-700/60 sticky top-0 z-40">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="resetToHome()">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center text-white font-extrabold text-xl shadow-lg shadow-brand-500/20">
+                    <i class="fa-solid fa-print"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg tracking-tight text-white leading-none">PRINT<span class="text-brand-500">PAY</span></h1>
+                    <p class="text-[11px] text-slate-400 font-medium">Cetak mudah. Bayar mudah.</p>
+                </div>
+            </div>
+
+            <!-- Current Station Indicator & Admin Button -->
+            <div class="flex items-center gap-2">
+                <div id="stationBadge" class="hidden sm:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-full border border-slate-700 text-xs text-slate-300">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="badgeStationName" class="font-semibold text-emerald-400">Belum Disambung</span>
+                </div>
+                <button onclick="toggleAdminModal()" class="p-2 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-300 transition-colors text-xs font-semibold flex items-center gap-1.5 border border-slate-600/50" title="Panel Admin Station">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span class="hidden md:inline">Admin</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Interactive Container -->
+    <main class="max-w-4xl w-full mx-auto p-4 flex-1 flex flex-col justify-center my-4">
+
+        <!-- Progress Stepper Tracker -->
+        <div class="mb-8 bg-slate-800/60 p-4 rounded-2xl border border-slate-700/50 backdrop-blur">
+            <div class="flex items-center justify-between max-w-2xl mx-auto relative">
+                <!-- Progress Line Background -->
+                <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-700 -z-0"></div>
+                <div id="progressLine" class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-brand-500 transition-all duration-500 -z-0" style="width: 0%;"></div>
+
+                <!-- Step 1 Indicator -->
+                <div class="step-node flex flex-col items-center gap-1.5 z-10" id="stepNode1">
+                    <div class="w-9 h-9 rounded-full bg-brand-500 text-slate-900 font-bold flex items-center justify-center ring-4 ring-slate-800 transition-all text-sm">
+                        <i class="fa-solid fa-qrcode"></i>
+                    </div>
+                    <span class="text-[11px] font-semibold text-brand-400">1. Scan QR</span>
+                </div>
+
+                <!-- Step 2 Indicator -->
+                <div class="step-node flex flex-col items-center gap-1.5 z-10" id="stepNode2">
+                    <div class="w-9 h-9 rounded-full bg-slate-700 text-slate-400 font-bold flex items-center justify-center ring-4 ring-slate-800 transition-all text-sm">
+                        <i class="fa-solid fa-file-arrow-up"></i>
+                    </div>
+                    <span class="text-[11px] font-semibold text-slate-400">2. Dokumen</span>
+                </div>
+
+                <!-- Step 3 Indicator -->
+                <div class="step-node flex flex-col items-center gap-1.5 z-10" id="stepNode3">
+                    <div class="w-9 h-9 rounded-full bg-slate-700 text-slate-400 font-bold flex items-center justify-center ring-4 ring-slate-800 transition-all text-sm">
+                        <i class="fa-solid fa-credit-card"></i>
+                    </div>
+                    <span class="text-[11px] font-semibold text-slate-400">3. Bayaran</span>
+                </div>
+
+                <!-- Step 4 Indicator -->
+                <div class="step-node flex flex-col items-center gap-1.5 z-10" id="stepNode4">
+                    <div class="w-9 h-9 rounded-full bg-slate-700 text-slate-400 font-bold flex items-center justify-center ring-4 ring-slate-800 transition-all text-sm">
+                        <i class="fa-solid fa-print"></i>
+                    </div>
+                    <span class="text-[11px] font-semibold text-slate-400">4. Cetak</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 1: SCAN QR PRINTER STATION -->
+        <section id="step1View" class="step-card space-y-6">
+            <div class="text-center space-y-2">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 text-xs font-semibold border border-brand-500/20">
+                    <i class="fa-solid fa-wave-square animate-pulse"></i> Langkah 1 daripada 4
+                </span>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Selamat Datang ke PrintPay</h2>
+                <p class="text-slate-400 text-sm max-w-md mx-auto">Scan QR code yang terdapat pada mesin printer untuk memulakan sesi cetakan anda.</p>
+            </div>
+
+            <!-- Camera Scanner Card -->
+            <div class="bg-slate-800 rounded-2xl border border-slate-700 p-4 sm:p-6 shadow-xl max-w-md mx-auto relative overflow-hidden">
+                
+                <!-- Camera Viewport Box -->
+                <div class="relative w-full aspect-square bg-slate-950 rounded-xl border-2 border-dashed border-slate-700 overflow-hidden flex flex-col items-center justify-center">
+                    
+                    <div id="reader" class="w-full h-full object-cover"></div>
+
+                    <!-- Scanner Overlay Frame (visible when camera off or active) -->
+                    <div id="scannerOverlay" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-8">
+                        <div class="w-full h-full border-2 border-brand-500/60 rounded-xl relative">
+                            <!-- Corner Accents -->
+                            <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-brand-500 rounded-tl-md"></div>
+                            <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-brand-500 rounded-tr-md"></div>
+                            <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-brand-500 rounded-bl-md"></div>
+                            <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-brand-500 rounded-br-md"></div>
+                            
+                            <!-- Animated Laser Scan Bar -->
+                            <div class="w-full h-0.5 bg-gradient-to-r from-transparent via-brand-400 to-transparent shadow-[0_0_15px_#22c55e] absolute animate-scan"></div>
+                        </div>
+                    </div>
+
+                    <!-- Fallback / Start Camera CTA -->
+                    <div id="cameraStartPlaceholder" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                        <div class="w-16 h-16 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-brand-400 text-2xl shadow-inner">
+                            <i class="fa-solid fa-camera"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-white font-bold text-base">Buka Kamera 1</h3>
+                            <p class="text-xs text-slate-400 mt-1">Gunakan kamera peranti anda untuk scan QR Code printer station.</p>
+                        </div>
+                        <button onclick="startCameraScanner()" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-500 text-slate-950 font-bold hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-brand-500/20 text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-qrcode"></i> Aktifkan Kamera 1
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Simulation Quick Buttons for Convenience -->
+                <div class="mt-6 pt-5 border-t border-slate-700/80 text-center space-y-3">
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Atau Pilih Station Ujian (Demo Instant):</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="selectPresetStation('PRINTPAY-STATION-001', 'Perpustakaan Utama (PP001)')" class="p-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 border border-slate-600/60 text-left transition text-xs flex items-center gap-2 group">
+                            <i class="fa-solid fa-print text-brand-400 group-hover:scale-110 transition-transform"></i>
+                            <div>
+                                <p class="font-bold text-white">Station PP001</p>
+                                <p class="text-[10px] text-slate-400">Perpustakaan</p>
+                            </div>
+                        </button>
+
+                        <button onclick="selectPresetStation('PRINTPAY-STATION-002', 'Kolej Kediaman A (PP002)')" class="p-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 border border-slate-600/60 text-left transition text-xs flex items-center gap-2 group">
+                            <i class="fa-solid fa-print text-emerald-400 group-hover:scale-110 transition-transform"></i>
+                            <div>
+                                <p class="font-bold text-white">Station PP002</p>
+                                <p class="text-[10px] text-slate-400">Kolej Kediaman</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 2: UPLOAD DOKUMEN & PREVIEW -->
+        <section id="step2View" class="step-card hidden space-y-6">
+            <!-- Connected Station Banner Confirmation -->
+            <div class="bg-brand-500/10 border border-brand-500/30 rounded-2xl p-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-lg">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-brand-300 font-semibold uppercase tracking-wider">Printer Berjaya Dikenal Pasti</p>
+                        <div class="flex items-center gap-2 text-sm text-white font-bold">
+                            <span>Print Station: <span id="displayStationCode" class="text-brand-400">PP001</span></span>
+                            <span>•</span>
+                            <span>Printer: <span class="text-slate-300">RONGTA F11B</span></span>
+                        </div>
+                    </div>
+                </div>
+                <span class="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold">READY</span>
+            </div>
+
+            <div class="text-center space-y-1">
+                <h2 class="text-2xl font-extrabold text-white">Upload Dokumen Anda</h2>
+                <p class="text-slate-400 text-sm">Sokong format: <span class="text-slate-200 font-semibold">PDF, JPG, JPEG, PNG</span></p>
+            </div>
+
+            <!-- Upload Box & Preview Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                
+                <!-- Left Column: File Dropper & Info -->
+                <div class="md:col-span-5 space-y-4">
+                    <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="border-2 border-dashed border-slate-600 hover:border-brand-500 bg-slate-800/80 hover:bg-slate-800 p-6 rounded-2xl text-center cursor-pointer transition-all space-y-3 group">
+                        <input type="file" id="fileInput" class="hidden" accept=".pdf, .jpg, .jpeg, .png" onchange="handleFileSelect(event)">
+                        
+                        <div class="w-16 h-16 rounded-2xl bg-slate-700 group-hover:bg-brand-500/20 text-brand-400 flex items-center justify-center mx-auto text-2xl transition-all group-hover:scale-110">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <div>
+                            <p class="text-white font-bold text-sm group-hover:text-brand-400 transition-colors">Klik atau Seret Dokumen ke Sini</p>
+                            <p class="text-xs text-slate-400 mt-1">Maksimum saiz fail: 25MB</p>
+                        </div>
+                        <button class="py-2 px-4 bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold rounded-xl text-xs inline-flex items-center gap-2 transition shadow">
+                            <i class="fa-solid fa-folder-open"></i> Pilih Dokumen
+                        </button>
+                    </div>
+
+                    <!-- Preset Demo Files for Testing -->
+                    <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-700/60 space-y-2">
+                        <p class="text-xs font-semibold text-slate-400">Gunakan Sampel Dokumen Ujian:</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="loadSampleDoc('assignment.pdf', 5)" class="text-xs py-1.5 px-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition font-medium">
+                                <i class="fa-solid fa-file-pdf text-red-400"></i> assignment.pdf (5 Muka)
+                            </button>
+                            <button onclick="loadSampleDoc('nota_kuliah.pdf', 12)" class="text-xs py-1.5 px-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition font-medium">
+                                <i class="fa-solid fa-file-pdf text-red-400"></i> nota_kuliah.pdf (12 Muka)
+                            </button>
+                            <button onclick="loadSampleDoc('resit_bayaran.png', 1)" class="text-xs py-1.5 px-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition font-medium">
+                                <i class="fa-solid fa-file-image text-blue-400"></i> resit_bayaran.png (1 Muka)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Live Document Page Calculation & Preview Card -->
+                <div class="md:col-span-7 bg-slate-800 rounded-2xl border border-slate-700 p-5 space-y-4 shadow-lg">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                        <span><i class="fa-solid fa-eye text-brand-400 mr-2"></i> Preview & Ringkasan Fail</span>
+                        <span id="fileBadgeType" class="text-[10px] px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-mono hidden">PDF</span>
+                    </h3>
+
+                    <!-- Document Display Placeholder -->
+                    <div id="docPreviewPlaceholder" class="py-12 text-center text-slate-500 space-y-2 border border-dashed border-slate-700 rounded-xl">
+                        <i class="fa-solid fa-file-circle-question text-4xl"></i>
+                        <p class="text-xs">Sila pilih fail untuk mengira jumlah halaman & preview.</p>
+                    </div>
+
+                    <!-- Active Document Summary View -->
+                    <div id="docSummaryView" class="hidden space-y-4">
+                        <div class="flex items-center gap-3 p-3 bg-slate-900/80 rounded-xl border border-slate-700">
+                            <div id="fileTypeIcon" class="w-10 h-10 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </div>
+                            <div class="overflow-hidden flex-1">
+                                <p id="docFileName" class="text-sm font-bold text-white truncate">assignment.pdf</p>
+                                <p id="docFileSize" class="text-xs text-slate-400">Saiz: 1.2 MB</p>
+                            </div>
+                        </div>
+
+                        <!-- Page Thumbnail Container -->
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between text-xs text-slate-400">
+                                <span>Preview Halaman (<span id="currentPreviewIndex">1</span>/<span id="totalPreviewPages">5</span>)</span>
+                                <div class="flex gap-1">
+                                    <button onclick="navigatePreview(-1)" class="w-7 h-7 rounded bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center">
+                                        <i class="fa-solid fa-chevron-left"></i>
+                                    </button>
+                                    <button onclick="navigatePreview(1)" class="w-7 h-7 rounded bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center">
+                                        <i class="fa-solid fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-700 flex items-center justify-center overflow-hidden p-2 relative">
+                                <div id="canvasContainer" class="w-full h-full flex items-center justify-center">
+                                    <canvas id="pdfCanvas" class="max-h-full max-w-full rounded shadow-md object-contain hidden"></canvas>
+                                    <img id="imagePreview" class="max-h-full max-w-full rounded shadow-md object-contain hidden" alt="Preview Image" />
+                                    <div id="simulatedDocCanvas" class="w-full max-w-xs h-full bg-white text-slate-900 p-4 rounded shadow-md flex flex-col justify-between text-left font-serif text-[10px] hidden">
+                                        <div class="border-b pb-2 mb-2 font-sans font-bold text-slate-800 text-xs flex justify-between">
+                                            <span>DOCUMENT PREVIEW</span>
+                                            <span id="simPageNum">Muka 1</span>
+                                        </div>
+                                        <div class="space-y-2 leading-relaxed text-slate-600">
+                                            <div class="h-2 bg-slate-200 rounded w-3/4"></div>
+                                            <div class="h-2 bg-slate-200 rounded w-full"></div>
+                                            <div class="h-2 bg-slate-200 rounded w-5/6"></div>
+                                            <div class="h-2 bg-slate-200 rounded w-2/3"></div>
+                                            <div class="p-2 bg-emerald-50 rounded border border-emerald-200 text-emerald-800 my-2 font-sans">
+                                                PRINTPAY - Sistem Cetakan Self-Service Pantas.
+                                            </div>
+                                            <div class="h-2 bg-slate-200 rounded w-full"></div>
+                                            <div class="h-2 bg-slate-200 rounded w-4/5"></div>
+                                        </div>
+                                        <div class="text-[8px] text-slate-400 font-sans border-t pt-2 mt-2 flex justify-between">
+                                            <span>Format: A4</span>
+                                            <span>PrintPay Engine v2.4</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Calculation Breakdown Table -->
+                        <div class="bg-slate-900/60 rounded-xl p-3 border border-slate-700/80 space-y-2 text-xs">
+                            <div class="flex justify-between text-slate-300">
+                                <span>Jumlah Halaman:</span>
+                                <span id="docPageCount" class="font-bold text-white">5 halaman</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>Kadar Harga:</span>
+                                <span class="font-bold text-brand-400">RM1.00 / halaman</span>
+                            </div>
+                            <div class="border-t border-slate-700 pt-2 flex justify-between items-center text-sm">
+                                <span class="font-bold text-white">Jumlah Keseluruhan:</span>
+                                <span id="docTotalPrice" class="font-extrabold text-brand-400 text-lg">RM5.00</span>
+                            </div>
+                        </div>
+
+                        <button onclick="goToStep(3)" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-500 text-slate-950 font-bold hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-brand-500/20 text-sm flex items-center justify-center gap-2">
+                            <span>Seterusnya: Pengesahan & Bayaran</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- STEP 3: PENGESAHAN PESANAN & BAYARAN -->
+        <section id="step3View" class="step-card hidden space-y-6">
+            <div class="text-center space-y-1">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 text-xs font-semibold border border-brand-500/20">
+                    <i class="fa-solid fa-shield-halved"></i> Pengesahan Keselamatan Bayaran
+                </span>
+                <h2 class="text-2xl font-extrabold text-white">Pengesahan Pesanan & Bayaran</h2>
+                <p class="text-slate-400 text-sm">Semak tetapan cetakan dan lengkapkan bayaran untuk mula mencetak.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                
+                <!-- Left Column: Print Options & Order Summary -->
+                <div class="md:col-span-7 bg-slate-800 rounded-2xl border border-slate-700 p-5 space-y-5 shadow-xl">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-700 pb-3">
+                        <i class="fa-solid fa-sliders text-brand-400"></i> Tetapan Cetakan
+                    </h3>
+
+                    <!-- Options Grid -->
+                    <div class="grid grid-cols-2 gap-4 text-xs">
+                        <!-- Salinan / Copies -->
+                        <div class="space-y-1">
+                            <label class="font-semibold text-slate-300">Jumlah Salinan (Copies)</label>
+                            <div class="flex items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-700">
+                                <button onclick="updateCopies(-1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm">-</button>
+                                <span id="copiesVal" class="flex-1 text-center font-bold text-white text-sm">1</span>
+                                <button onclick="updateCopies(1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm">+</button>
+                            </div>
+                        </div>
+
+                        <!-- Warna / Color Mode -->
+                        <div class="space-y-1">
+                            <label class="font-semibold text-slate-300">Mod Warna</label>
+                            <select id="colorModeSelect" onchange="recalculateTotal()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white focus:border-brand-500 outline-none">
+                                <option value="bw">Hitam & Putih (RM1.00/muka)</option>
+                                <option value="color">Warna (RM1.00/muka)</option>
+                            </select>
+                        </div>
+
+                        <!-- Muka Surat / Pages Option -->
+                        <div class="space-y-1 col-span-2">
+                            <label class="font-semibold text-slate-300">Muka Surat Cetakan</label>
+                            <select id="pageRangeSelect" onchange="togglePageRangeInput()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white focus:border-brand-500 outline-none">
+                                <option value="all">Semua Halaman</option>
+                                <option value="custom">Halaman Terpilih (Contoh: 1, 3-5)</option>
+                            </select>
+                            <input type="text" id="customPagesInput" placeholder="Contoh: 1-3" oninput="recalculateTotal()" class="hidden w-full mt-2 bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white text-xs focus:border-brand-500 outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Detailed Price Summary -->
+                    <div class="bg-slate-900/80 rounded-xl p-4 border border-slate-700 space-y-2">
+                        <div class="flex justify-between text-xs text-slate-300">
+                            <span>Nama Dokumen:</span>
+                            <span id="confirmDocName" class="font-semibold text-white truncate max-w-[180px]">assignment.pdf</span>
+                        </div>
+                        <div class="flex justify-between text-xs text-slate-300">
+                            <span>Kadar Per Muka Surat:</span>
+                            <span class="font-semibold text-white">RM1.00</span>
+                        </div>
+                        <div class="flex justify-between text-xs text-slate-300">
+                            <span>Jumlah Muka Surat Dicetak:</span>
+                            <span id="confirmPagesCount" class="font-semibold text-white">5</span>
+                        </div>
+                        <div class="flex justify-between text-xs text-slate-300">
+                            <span>Bilangan Salinan:</span>
+                            <span id="confirmCopiesCount" class="font-semibold text-white">1</span>
+                        </div>
+
+                        <div class="border-t border-slate-700 pt-3 mt-2 flex justify-between items-center">
+                            <div>
+                                <p class="text-xs text-slate-400 font-semibold">Jumlah Kena Bayar</p>
+                                <p class="text-[10px] text-brand-400">Termasuk Cukai & Cas Station</p>
+                            </div>
+                            <span id="confirmGrandTotal" class="text-2xl font-extrabold text-brand-400">RM5.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Multi Payment Method & DuitNow QR -->
+                <div class="md:col-span-5 bg-slate-800 rounded-2xl border border-slate-700 p-5 space-y-5 shadow-xl flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center justify-between border-b border-slate-700 pb-3">
+                            <span><i class="fa-solid fa-qrcode text-brand-400 mr-2"></i> Pilih Kaedah Bayaran</span>
+                            <span class="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300">Instant Verification</span>
+                        </h3>
+
+                        <!-- Payment Method Tabs -->
+                        <div class="grid grid-cols-3 gap-2 mt-4">
+                            <button onclick="setPaymentTab('duitnow')" id="tabDuitNow" class="p-2 rounded-xl border border-brand-500 bg-brand-500/10 text-white text-xs font-bold flex flex-col items-center gap-1 transition">
+                                <i class="fa-solid fa-qrcode text-brand-400 text-lg"></i>
+                                <span>DuitNow QR</span>
+                            </button>
+                            <button onclick="setPaymentTab('ewallet')" id="tabEwallet" class="p-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-700/50 text-slate-300 text-xs font-bold flex flex-col items-center gap-1 transition">
+                                <i class="fa-solid fa-wallet text-blue-400 text-lg"></i>
+                                <span>E-Wallet</span>
+                            </button>
+                            <button onclick="setPaymentTab('fpx')" id="tabFPX" class="p-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-700/50 text-slate-300 text-xs font-bold flex flex-col items-center gap-1 transition">
+                                <i class="fa-solid fa-building-columns text-purple-400 text-lg"></i>
+                                <span>FPX Online</span>
+                            </button>
+                        </div>
+
+                        <!-- DuitNow QR Display Area -->
+                        <div id="paymentBoxDuitNow" class="mt-4 p-4 bg-white rounded-xl text-slate-900 text-center space-y-2 shadow-inner">
+                            <div class="flex items-center justify-between px-2">
+                                <span class="font-extrabold text-pink-600 tracking-wider text-xs">DuitNow</span>
+                                <span class="text-[10px] text-slate-500 font-semibold">ALL MALAYSIAN BANKS & WALLETS</span>
+                            </div>
+                            <!-- Dynamic QR Code SVG Graphic -->
+                            <div class="relative w-40 h-40 mx-auto bg-slate-100 border-2 border-pink-500 rounded-lg p-2 flex items-center justify-center">
+                                <svg class="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect width="100" height="100" fill="white"/>
+                                    <!-- Stylized QR Code Pattern -->
+                                    <path d="M10 10H35V35H10V10ZM15 15V30H30V15H15Z" fill="#1e293b"/>
+                                    <path d="M20 20H25V25H20V20Z" fill="#ec4899"/>
+                                    <path d="M65 10H90V35H65V10ZM70 15V30H85V15H70Z" fill="#1e293b"/>
+                                    <path d="M75 20H80V25H75V20Z" fill="#ec4899"/>
+                                    <path d="M10 65H35V90H10V65ZM15 70V85H30V70H15Z" fill="#1e293b"/>
+                                    <path d="M20 75H25V80H20V75Z" fill="#ec4899"/>
+                                    <rect x="40" y="10" width="10" height="10" fill="#1e293b"/>
+                                    <rect x="50" y="25" width="10" height="15" fill="#1e293b"/>
+                                    <rect x="40" y="45" width="20" height="10" fill="#1e293b"/>
+                                    <rect x="65" y="45" width="15" height="15" fill="#1e293b"/>
+                                    <rect x="10" y="45" width="15" height="10" fill="#1e293b"/>
+                                    <rect x="75" y="75" width="15" height="15" fill="#ec4899"/>
+                                    <rect x="45" y="65" width="15" height="25" fill="#1e293b"/>
+                                </svg>
+                                <!-- Center Logo -->
+                                <div class="absolute w-8 h-8 rounded-full bg-pink-600 text-white text-[9px] font-extrabold flex items-center justify-center border-2 border-white shadow">
+                                    PAY
+                                </div>
+                            </div>
+                            <p class="text-[11px] font-bold text-slate-700">Scan guna TNG, GrabPay, Maybank, CIMB, dll.</p>
+                        </div>
+
+                        <!-- Alternative E-Wallet / FPX Options -->
+                        <div id="paymentBoxEwallet" class="hidden mt-4 p-4 bg-slate-900 rounded-xl space-y-2 text-xs">
+                            <p class="text-slate-300 font-semibold mb-2">Pilih E-Wallet Pilihan:</p>
+                            <label class="flex items-center gap-3 p-2 bg-slate-800 rounded-lg cursor-pointer hover:bg-slate-700 border border-slate-700">
+                                <input type="radio" name="ewalletOption" checked class="accent-brand-500">
+                                <i class="fa-solid fa-mobile-screen text-blue-400"></i>
+                                <span class="font-bold text-white">Touch 'n Go eWallet</span>
+                            </label>
+                            <label class="flex items-center gap-3 p-2 bg-slate-800 rounded-lg cursor-pointer hover:bg-slate-700 border border-slate-700">
+                                <input type="radio" name="ewalletOption" class="accent-brand-500">
+                                <i class="fa-solid fa-car text-emerald-400"></i>
+                                <span class="font-bold text-white">GrabPay</span>
+                            </label>
+                        </div>
+
+                        <div id="paymentBoxFPX" class="hidden mt-4 p-4 bg-slate-900 rounded-xl space-y-2 text-xs">
+                            <p class="text-slate-300 font-semibold mb-2">Pilih Bank Online (FPX):</p>
+                            <select class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white">
+                                <option>Maybank2u</option>
+                                <option>CIMB Clicks</option>
+                                <option>Bank Islam</option>
+                                <option>RHB NOW</option>
+                                <option>Hong Leong Connect</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Instant Simulation Action Button -->
+                    <div class="mt-4 space-y-2">
+                        <button onclick="processPaymentSimulation()" class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-brand-500 via-emerald-500 to-teal-400 text-slate-950 font-extrabold hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-brand-500/25 text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span>Sahkan Bayaran (<span id="payBtnAmount">RM5.00</span>)</span>
+                        </button>
+                        <p class="text-[10px] text-center text-slate-500">Bayaran disahkan secara automatik menerusi sistem integrasi PRINTPAY Gateway.</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- STEP 4: PROSES CETAKAN RONGTA F11B & RESIT -->
+        <section id="step4View" class="step-card hidden space-y-6">
+            <div class="text-center space-y-1">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 text-xs font-semibold border border-brand-500/20">
+                    <i class="fa-solid fa-gear fa-spin"></i> Sesi Cetakan Aktif
+                </span>
+                <h2 class="text-2xl font-extrabold text-white">Dokumen Hantar ke Printer RONGTA F11B</h2>
+                <p class="text-slate-400 text-sm">Sila tunggu dokumen anda siap dicetak dari ruang keluar kertas.</p>
+            </div>
+
+            <!-- Printer Simulation Stage Box -->
+            <div class="bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-2xl max-w-xl mx-auto space-y-6 relative overflow-hidden">
+                
+                <!-- Live Mechanical Sound Effect Indicator -->
+                <div class="flex items-center justify-between text-xs text-slate-400 bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-700">
+                    <div class="flex items-center gap-2">
+                        <span id="printerLed" class="w-3 h-3 rounded-full bg-amber-500 animate-ping"></span>
+                        <span id="printerStatusText" class="font-bold text-amber-400">Menghantar arahan cetakan ke RONGTA F11B...</span>
+                    </div>
+                    <button onclick="toggleSound()" id="soundBtn" class="text-slate-400 hover:text-white" title="Bunyi Cetakan Engine">
+                        <i class="fa-solid fa-volume-high text-brand-400"></i>
+                    </button>
+                </div>
+
+                <!-- 3D Graphic Printer Engine (RONGTA F11B Visual Representation) -->
+                <div class="relative w-full h-64 bg-slate-950 rounded-2xl border-2 border-slate-700 flex flex-col items-center justify-center p-4 overflow-hidden">
+                    
+                    <!-- Paper Feeding Tray Top -->
+                    <div class="w-48 h-6 bg-slate-800 border-t-2 border-x-2 border-slate-600 rounded-t-lg z-10 flex items-center justify-center">
+                        <span class="text-[9px] font-mono text-slate-400 uppercase tracking-widest">RONGTA F11B FEEDER</span>
+                    </div>
+
+                    <!-- Main Printer Body Chassis -->
+                    <div class="w-64 h-28 bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-slate-600 rounded-xl shadow-2xl z-20 flex flex-col justify-between p-3 relative">
+                        <!-- Brand Label & Status Display -->
+                        <div class="flex items-center justify-between">
+                            <span class="font-extrabold text-white text-xs tracking-wider">RONGTA <span class="text-brand-400 font-normal">F11B</span></span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <span class="text-[9px] font-mono text-slate-300">ONLINE</span>
+                            </div>
+                        </div>
+
+                        <!-- Printing Head Scan Motion Line -->
+                        <div class="relative w-full h-3 bg-slate-950 rounded border border-slate-700 overflow-hidden">
+                            <div id="printHeadAnimation" class="absolute top-0 bottom-0 w-8 bg-gradient-to-r from-brand-500 via-emerald-300 to-brand-500 rounded shadow-[0_0_10px_#22c55e] hidden"></div>
+                        </div>
+
+                        <!-- Paper Exit Slot Frame -->
+                        <div class="w-full h-2 bg-slate-950 rounded-full border border-slate-700 relative"></div>
+                    </div>
+
+                    <!-- Animated Emerging Paper Tray Below -->
+                    <div class="relative w-56 h-24 overflow-hidden flex justify-center -mt-1">
+                        <div id="printedPaperSheet" class="w-44 h-32 bg-white text-slate-900 rounded-b shadow-2xl p-3 border border-slate-300 text-[8px] font-serif transform -translate-y-full transition-transform duration-1000 opacity-0 flex flex-col justify-between">
+                            <div>
+                                <div class="font-sans font-bold border-b pb-1 mb-1 text-slate-800 flex justify-between">
+                                    <span>PRINTED DOCUMENT</span>
+                                    <span id="printedPageTag">Page 1</span>
+                                </div>
+                                <p class="text-slate-600 leading-tight">Mencetak kandungan dokumen menerusi RONGTA F11B High-Speed Thermal Print Head...</p>
+                            </div>
+                            <div class="text-[7px] text-brand-600 font-sans font-bold text-right border-t pt-1">
+                                PRINTPAY VERIFIED
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Bar & Page Counters -->
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-slate-300">Kemajuan Cetakan:</span>
+                        <span id="printProgressPercent" class="text-brand-400">0%</span>
+                    </div>
+                    <div class="w-full h-3 bg-slate-900 rounded-full border border-slate-700 overflow-hidden">
+                        <div id="printProgressBar" class="h-full bg-gradient-to-r from-brand-600 to-emerald-400 w-0 transition-all duration-300"></div>
+                    </div>
+                    <div class="flex justify-between text-[11px] text-slate-400">
+                        <span>Sedang Mencetak: <span id="currentPrintPage" class="text-white font-bold">0</span> / <span id="totalPrintPage" class="text-white font-bold">5</span> Halaman</span>
+                        <span id="copiesPrintTag">Salinan 1 daripada 1</span>
+                    </div>
+                </div>
+
+                <!-- Digital Receipt & Action buttons after completion -->
+                <div id="completionSection" class="hidden pt-4 border-t border-slate-700 space-y-4 text-center">
+                    <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-1">
+                        <i class="fa-solid fa-circle-check text-emerald-400 text-3xl"></i>
+                        <h3 class="text-base font-extrabold text-white">Cetakan Berjaya Disempurnakan!</h3>
+                        <p class="text-xs text-slate-300">Sila ambil dokumen anda dari mesin printer RONGTA F11B.</p>
+                    </div>
+
+                    <!-- Digital Receipt Card -->
+                    <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-left space-y-2 text-xs font-mono">
+                        <div class="text-center font-sans font-bold border-b border-slate-800 pb-2 text-slate-300">
+                            --- RESIT RASMI PRINTPAY ---
+                        </div>
+                        <div class="flex justify-between text-slate-400">
+                            <span>ID Transaksi:</span>
+                            <span id="receiptTxId" class="text-white font-bold">#PP-892341</span>
+                        </div>
+                        <div class="flex justify-between text-slate-400">
+                            <span>Tarikh / Masa:</span>
+                            <span id="receiptDateTime" class="text-white"></span>
+                        </div>
+                        <div class="flex justify-between text-slate-400">
+                            <span>Station:</span>
+                            <span id="receiptStation" class="text-white">PP001 (RONGTA F11B)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-400">
+                            <span>Jumlah Bayaran:</span>
+                            <span id="receiptAmount" class="text-brand-400 font-bold">RM5.00</span>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="downloadReceiptPdf()" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-download"></i> Muat Turun Resit
+                        </button>
+                        <button onclick="resetToHome()" class="flex-1 py-3 bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-brand-500/20">
+                            <i class="fa-solid fa-house"></i> Sesi Cetakan Baharu
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Admin & Owner Station Status Modal -->
+    <div id="adminModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
+            <button onclick="toggleAdminModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="flex items-center gap-3 border-b border-slate-700 pb-3">
+                <div class="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center text-brand-400 text-lg">
+                    <i class="fa-solid fa-sliders"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-white text-base">Panel Pemantauan Station PRINTPAY</h3>
+                    <p class="text-xs text-slate-400">Status perkakasan RONGTA F11B & log pendapatan.</p>
+                </div>
+            </div>
+
+            <!-- Hardware Status Meters -->
+            <div class="grid grid-cols-2 gap-3 text-xs">
+                <!-- Paper Level -->
+                <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-1.5">
+                    <div class="flex justify-between text-slate-300 font-semibold">
+                        <span>Status Kertas (A4)</span>
+                        <span id="paperTrayLevelText" class="text-brand-400 font-bold">88%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="paperTrayBar" class="bg-brand-500 h-full w-[88%]"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500">Kapasiti: ~440/500 helaian</p>
+                </div>
+
+                <!-- Ribbon / Toner Status -->
+                <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-1.5">
+                    <div class="flex justify-between text-slate-300 font-semibold">
+                        <span>Status Dakwat/Toner</span>
+                        <span class="text-emerald-400 font-bold">94%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div class="bg-emerald-500 h-full w-[94%]"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500">RONGTA Thermal Ribbon OK</p>
+                </div>
+            </div>
+
+            <!-- Quick Revenue & Job Statistics -->
+            <div class="bg-slate-900/90 rounded-xl p-4 border border-slate-700 flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400 font-medium">Jumlah Kutipan Hari Ini</p>
+                    <p id="todayRevenueText" class="text-2xl font-extrabold text-brand-400">RM 42.00</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-slate-400 font-medium">Jumlah Dokumen Dicetak</p>
+                    <p id="todayJobsText" class="text-lg font-bold text-white">18 Pesanan</p>
+                </div>
+            </div>
+
+            <!-- Admin Maintenance Quick Actions -->
+            <div class="space-y-2">
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Aksi Penyelenggaraan:</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="refillPaperSim()" class="p-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-box"></i> Isi Semula Kertas
+                    </button>
+                    <button onclick="testPrintHardware()" class="p-2.5 bg-brand-500 hover:bg-brand-600 text-slate-950 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-vial"></i> Ujian Cetak Test Page
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Box -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 bg-slate-800 text-white border border-brand-500/50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transition-all transform translate-y-20 opacity-0 z-50">
+        <i id="toastIcon" class="fa-solid fa-circle-info text-brand-400 text-lg"></i>
+        <span id="toastMessage" class="text-xs font-semibold">Notifikasi PrintPay</span>
+    </div>
+
+    <!-- Footer Branding -->
+    <footer class="bg-slate-950 border-t border-slate-800/80 py-4 text-center text-xs text-slate-500">
+        <p>© 2026 PRINTPAY. Hak Cipta Terpelihara. Integrated with RONGTA F11B Direct Thermal Print Engine.</p>
+    </footer>
+
+    <script>
+        // Global Application State Variables
+        let currentStep = 1;
+        let selectedStation = { id: null, name: '' };
+        let activeFile = { name: '', size: '', pages: 1, type: 'pdf', dataUrl: null, pdfDoc: null };
+        let printOptions = { copies: 1, colorMode: 'bw', pageRange: 'all', customPages: '' };
+        let previewCurrentPage = 1;
+        let html5QrScanner = null;
+        let soundEnabled = true;
+
+        // Statistics for Admin Dashboard
+        let adminStats = {
+            paperLevel: 88,
+            revenueToday: 42.00,
+            jobsToday: 18
+        };
+
+        // Initialize App on DOM Load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateStepUI();
+        });
+
+        // Show Toast Message Helper (Replaces browser alert)
+        function showToast(message, iconClass = 'fa-circle-info text-brand-400') {
+            const toast = document.getElementById('toastNotification');
+            const toastMsg = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.innerText = message;
+            toastIcon.className = `fa-solid ${iconClass} text-lg`;
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3500);
+        }
+
+        // Navigate between steps
+        function goToStep(step) {
+            if (step === 2 && !selectedStation.id) {
+                showToast("Sila scan QR station printer terlebih dahulu!", "fa-circle-exclamation text-amber-400");
+                return;
+            }
+            if (step === 3 && (!activeFile.name || activeFile.pages <= 0)) {
+                showToast("Sila muat naik dokumen terlebih dahulu!", "fa-circle-exclamation text-amber-400");
+                return;
+            }
+
+            // Stop camera scanner if moving away from step 1
+            if (currentStep === 1 && step !== 1 && html5QrScanner) {
+                try {
+                    html5QrScanner.clear();
+                } catch (e) { console.log(e); }
+            }
+
+            currentStep = step;
+            updateStepUI();
+        }
+
+        // Update Stepper Line & Views
+        function updateStepUI() {
+            // Hide all step cards
+            document.querySelectorAll('.step-card').forEach(card => card.classList.add('hidden'));
+
+            // Show active card
+            document.getElementById(`step${currentStep}View`).classList.remove('hidden');
+
+            // Update Progress Line Width
+            const progressPct = ((currentStep - 1) / 3) * 100;
+            document.getElementById('progressLine').style.width = `${progressPct}%`;
+
+            // Update Step Nodes Styling
+            for (let i = 1; i <= 4; i++) {
+                const node = document.getElementById(`stepNode${i}`);
+                const circle = node.querySelector('div');
+                const text = node.querySelector('span');
+
+                if (i <= currentStep) {
+                    circle.className = "w-9 h-9 rounded-full bg-brand-500 text-slate-950 font-bold flex items-center justify-center ring-4 ring-slate-800 transition-all text-sm";
+                    text.className = "text-[11px] font-semibold text-brand-400";
+                } else {
+                    circle.className = "w-9 h-9 rounded-full bg-slate-700 text-slate-400 font-bold flex items-center justify-center ring-4 ring-slate-800 transition-all text-sm";
+                    text.className = "text-[11px] font-semibold text-slate-400";
+                }
+            }
+
+            // If Step 3, refresh pricing calculations
+            if (currentStep === 3) {
+                recalculateTotal();
+            }
+        }
+
+        // Reset App State to Home
+        function resetToHome() {
+            if (html5QrScanner) {
+                try { html5QrScanner.clear(); } catch(e){}
+            }
+            currentStep = 1;
+            selectedStation = { id: null, name: '' };
+            activeFile = { name: '', size: '', pages: 1, type: 'pdf', dataUrl: null, pdfDoc: null };
+            document.getElementById('badgeStationName').innerText = "Belum Disambung";
+            document.getElementById('stationBadge').classList.add('hidden');
+            document.getElementById('cameraStartPlaceholder').classList.remove('hidden');
+            document.getElementById('docSummaryView').classList.add('hidden');
+            document.getElementById('docPreviewPlaceholder').classList.remove('hidden');
+            document.getElementById('completionSection').classList.add('hidden');
+            updateStepUI();
+            showToast("Sesi diset semula. Sila scan QR printer.", "fa-circle-info text-brand-400");
+        }
+
+        // Start Live Camera QR Scanner
+        function startCameraScanner() {
+            document.getElementById('cameraStartPlaceholder').classList.add('hidden');
+
+            html5QrScanner = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+            html5QrScanner.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanFailure
+            ).catch(err => {
+                console.error("Camera access error: ", err);
+                showToast("Kamera tidak ditemui. Sila guna Station Ujian.", "fa-circle-exclamation text-amber-400");
+                document.getElementById('cameraStartPlaceholder').classList.remove('hidden');
+            });
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            if (html5QrScanner) {
+                html5QrScanner.stop().then(() => {
+                    selectPresetStation(decodedText, `Station Scan (${decodedText})`);
+                }).catch(err => console.log(err));
+            } else {
+                selectPresetStation(decodedText, `Station Scan (${decodedText})`);
+            }
+        }
+
+        function onScanFailure(error) {
+            // Scanner scanning frame fail feed (silent)
+        }
+
+        // Select Preset / Scanned Station
+        function selectPresetStation(stationId, stationName) {
+            selectedStation = { id: stationId, name: stationName };
+            document.getElementById('displayStationCode').innerText = stationId.replace('PRINTPAY-STATION-', 'PP');
+            document.getElementById('badgeStationName').innerText = `Station ${stationId.replace('PRINTPAY-STATION-', 'PP')}`;
+            document.getElementById('stationBadge').classList.remove('hidden');
+            document.getElementById('stationBadge').classList.add('flex');
+
+            showToast(`Printer berjaya dikenal pasti! Station: ${stationId}`, "fa-circle-check text-brand-400");
+
+            setTimeout(() => {
+                goToStep(2);
+            }, 600);
+        }
+
+        // Handle Drag & Drop / File Input Selection
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            if (files && files.length > 0) {
+                processUploadedFile(files[0]);
+            }
+        }
+
+        // Setup Drag & Drop Listeners
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone) {
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('border-brand-500', 'bg-brand-500/10');
+                }, false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('border-brand-500', 'bg-brand-500/10');
+                }, false);
+            });
+            dropZone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files && files.length > 0) {
+                    processUploadedFile(files[0]);
+                }
+            });
+        }
+
+        // Process File (PDF Page Engine or Image)
+        function processUploadedFile(file) {
+            const fileName = file.name;
+            const fileSize = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+            const fileExt = fileName.split('.').pop().toLowerCase();
+
+            activeFile.name = fileName;
+            activeFile.size = fileSize;
+            activeFile.type = fileExt;
+
+            document.getElementById('docFileName').innerText = fileName;
+            document.getElementById('docFileSize').innerText = `Saiz: ${fileSize}`;
+            document.getElementById('docSummaryView').classList.remove('hidden');
+            document.getElementById('docPreviewPlaceholder').classList.add('hidden');
+
+            const fileReader = new FileReader();
+
+            if (fileExt === 'pdf') {
+                document.getElementById('fileBadgeType').innerText = 'PDF';
+                document.getElementById('fileBadgeType').classList.remove('hidden');
+                document.getElementById('fileTypeIcon').className = "w-10 h-10 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center text-xl";
+                document.getElementById('fileTypeIcon').innerHTML = '<i class="fa-solid fa-file-pdf"></i>';
+
+                fileReader.onload = function() {
+                    const typedarray = new Uint8Array(this.result);
+                    pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                        activeFile.pdfDoc = pdf;
+                        activeFile.pages = pdf.numPages;
+                        updateDocCalculationUI();
+                        previewCurrentPage = 1;
+                        renderPdfPagePreview(previewCurrentPage);
+                    }).catch(err => {
+                        console.error("PDF Parsing Error:", err);
+                        // Fallback simulation
+                        activeFile.pages = 4;
+                        updateDocCalculationUI();
+                        showSimulatedCanvasPreview();
+                    });
+                };
+                fileReader.readAsArrayBuffer(file);
+            } else {
+                // Image format (JPG / PNG)
+                document.getElementById('fileBadgeType').innerText = fileExt.toUpperCase();
+                document.getElementById('fileBadgeType').classList.remove('hidden');
+                document.getElementById('fileTypeIcon').className = "w-10 h-10 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center text-xl";
+                document.getElementById('fileTypeIcon').innerHTML = '<i class="fa-solid fa-file-image"></i>';
+
+                fileReader.onload = function(e) {
+                    activeFile.pages = 1; // 1 page per image
+                    activeFile.dataUrl = e.target.result;
+                    updateDocCalculationUI();
+                    
+                    const imgPreview = document.getElementById('imagePreview');
+                    const pdfCanvas = document.getElementById('pdfCanvas');
+                    const simCanvas = document.getElementById('simulatedDocCanvas');
+
+                    pdfCanvas.classList.add('hidden');
+                    simCanvas.classList.add('hidden');
+                    imgPreview.src = e.target.result;
+                    imgPreview.classList.remove('hidden');
+                };
+                fileReader.readAsDataURL(file);
+            }
+        }
+
+        // Load Preset Sample File
+        function loadSampleDoc(sampleName, samplePages) {
+            activeFile.name = sampleName;
+            activeFile.size = '1.4 MB';
+            activeFile.pages = samplePages;
+            activeFile.type = sampleName.endsWith('.pdf') ? 'pdf' : 'png';
+            activeFile.pdfDoc = null;
+
+            document.getElementById('docFileName').innerText = sampleName;
+            document.getElementById('docFileSize').innerText = 'Saiz: 1.4 MB';
+            document.getElementById('docSummaryView').classList.remove('hidden');
+            document.getElementById('docPreviewPlaceholder').classList.add('hidden');
+
+            updateDocCalculationUI();
+            showSimulatedCanvasPreview();
+            showToast(`Sampel ${sampleName} dimuatkan (${samplePages} halaman).`, "fa-circle-info text-brand-400");
+        }
+
+        // Render PDF page with PDF.js
+        function renderPdfPagePreview(pageNum) {
+            if (!activeFile.pdfDoc) return;
+
+            const pdfCanvas = document.getElementById('pdfCanvas');
+            const imgPreview = document.getElementById('imagePreview');
+            const simCanvas = document.getElementById('simulatedDocCanvas');
+
+            imgPreview.classList.add('hidden');
+            simCanvas.classList.add('hidden');
+            pdfCanvas.classList.remove('hidden');
+
+            activeFile.pdfDoc.getPage(pageNum).then(page => {
+                const viewport = page.getViewport({ scale: 1.0 });
+                const context = pdfCanvas.getContext('2d');
+                pdfCanvas.height = viewport.height;
+                pdfCanvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                page.render(renderContext);
+            });
+        }
+
+        // Fallback Document Preview Generator
+        function showSimulatedCanvasPreview() {
+            const pdfCanvas = document.getElementById('pdfCanvas');
+            const imgPreview = document.getElementById('imagePreview');
+            const simCanvas = document.getElementById('simulatedDocCanvas');
+
+            pdfCanvas.classList.add('hidden');
+            imgPreview.classList.add('hidden');
+            simCanvas.classList.remove('hidden');
+            document.getElementById('simPageNum').innerText = `Muka ${previewCurrentPage}`;
+        }
+
+        // Navigate page thumbnail previews
+        function navigatePreview(direction) {
+            const newPage = previewCurrentPage + direction;
+            if (newPage >= 1 && newPage <= activeFile.pages) {
+                previewCurrentPage = newPage;
+                document.getElementById('currentPreviewIndex').innerText = previewCurrentPage;
+
+                if (activeFile.pdfDoc) {
+                    renderPdfPagePreview(previewCurrentPage);
+                } else {
+                    document.getElementById('simPageNum').innerText = `Muka ${previewCurrentPage}`;
+                }
+            }
+        }
+
+        // Update Document Page & Price Breakdown UI
+        function updateDocCalculationUI() {
+            const totalPages = activeFile.pages;
+            const pricePerPage = 1.00; // RM1.00 per page as per specification
+            const totalPrice = (totalPages * pricePerPage).toFixed(2);
+
+            document.getElementById('docPageCount').innerText = `${totalPages} halaman`;
+            document.getElementById('docTotalPrice').innerText = `RM${totalPrice}`;
+            document.getElementById('currentPreviewIndex').innerText = 1;
+            document.getElementById('totalPreviewPages').innerText = totalPages;
+            previewCurrentPage = 1;
+        }
+
+        // Update Salinan / Copies Counter
+        function updateCopies(delta) {
+            let current = printOptions.copies + delta;
+            if (current < 1) current = 1;
+            if (current > 50) current = 50;
+            printOptions.copies = current;
+            document.getElementById('copiesVal').innerText = current;
+            recalculateTotal();
+        }
+
+        // Toggle Custom Page Range Input
+        function togglePageRangeInput() {
+            const mode = document.getElementById('pageRangeSelect').value;
+            const customInput = document.getElementById('customPagesInput');
+            if (mode === 'custom') {
+                customInput.classList.remove('hidden');
+            } else {
+                customInput.classList.add('hidden');
+            }
+            recalculateTotal();
+        }
+
+        // Recalculate Final Grand Total in Confirmation View
+        function recalculateTotal() {
+            const pricePerPage = 1.00; // RM1.00 per page standard
+            let pagesToPrint = activeFile.pages;
+
+            const pageRangeMode = document.getElementById('pageRangeSelect').value;
+            if (pageRangeMode === 'custom') {
+                const customVal = document.getElementById('customPagesInput').value.trim();
+                if (customVal) {
+                    // Simple parse page count simulation (e.g., 1-3 = 3 pages)
+                    pagesToPrint = parseCustomPagesCount(customVal, activeFile.pages);
+                }
+            }
+
+            const copies = printOptions.copies;
+            const grandTotal = (pagesToPrint * pricePerPage * copies).toFixed(2);
+
+            document.getElementById('confirmDocName').innerText = activeFile.name || 'Dokumen';
+            document.getElementById('confirmPagesCount').innerText = pagesToPrint;
+            document.getElementById('confirmCopiesCount').innerText = copies;
+            document.getElementById('confirmGrandTotal').innerText = `RM${grandTotal}`;
+            document.getElementById('payBtnAmount').innerText = `RM${grandTotal}`;
+        }
+
+        function parseCustomPagesCount(rangeStr, maxPages) {
+            try {
+                if (rangeStr.includes('-')) {
+                    const parts = rangeStr.split('-');
+                    const start = parseInt(parts[0]) || 1;
+                    const end = parseInt(parts[1]) || maxPages;
+                    return Math.min(maxPages, Math.max(1, (end - start + 1)));
+                } else if (rangeStr.includes(',')) {
+                    return Math.min(maxPages, rangeStr.split(',').length);
+                } else if (!isNaN(parseInt(rangeStr))) {
+                    return 1;
+                }
+            } catch(e){}
+            return maxPages;
+        }
+
+        // Switch Payment Gateway Tab
+        function setPaymentTab(tabName) {
+            ['DuitNow', 'Ewallet', 'FPX'].forEach(t => {
+                document.getElementById(`paymentBox${t}`).classList.add('hidden');
+                document.getElementById(`tab${t}`).className = "p-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-700/50 text-slate-300 text-xs font-bold flex flex-col items-center gap-1 transition";
+            });
+
+            if (tabName === 'duitnow') {
+                document.getElementById('paymentBoxDuitNow').classList.remove('hidden');
+                document.getElementById('tabDuitNow').className = "p-2 rounded-xl border border-brand-500 bg-brand-500/10 text-white text-xs font-bold flex flex-col items-center gap-1 transition";
+            } else if (tabName === 'ewallet') {
+                document.getElementById('paymentBoxEwallet').classList.remove('hidden');
+                document.getElementById('tabEwallet').className = "p-2 rounded-xl border border-brand-500 bg-brand-500/10 text-white text-xs font-bold flex flex-col items-center gap-1 transition";
+            } else if (tabName === 'fpx') {
+                document.getElementById('paymentBoxFPX').classList.remove('hidden');
+                document.getElementById('tabFPX').className = "p-2 rounded-xl border border-brand-500 bg-brand-500/10 text-white text-xs font-bold flex flex-col items-center gap-1 transition";
+            }
+        }
+
+        // Process Payment Verification & Trigger Printing Simulation Engine
+        function processPaymentSimulation() {
+            showToast("Memproses pengesahan bayaran...", "fa-gear fa-spin text-brand-400");
+
+            setTimeout(() => {
+                showToast("Bayaran berjaya disahkan! Memulakan cetakan...", "fa-circle-check text-brand-400");
+                goToStep(4);
+                startRongtaPrinterSimulation();
+            }, 1200);
+        }
+
+        // Mechanical Printer Sound Synthesizer (Web Audio API)
+        function playPrinterSound() {
+            if (!soundEnabled) return;
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(320, audioCtx.currentTime + 0.3);
+
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch(e){}
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('soundBtn');
+            if (soundEnabled) {
+                btn.innerHTML = '<i class="fa-solid fa-volume-high text-brand-400"></i>';
+                showToast("Bunyi simulasi diaktifkan.", "fa-volume-high text-brand-400");
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-volume-xmark text-slate-500"></i>';
+                showToast("Bunyi simulasi dinyahaktifkan.", "fa-volume-xmark text-slate-400");
+            }
+        }
+
+        // Start RONGTA F11B Animated Printing Sequence
+        function startRongtaPrinterSimulation() {
+            const totalPagesToPrint = parseInt(document.getElementById('confirmPagesCount').innerText) || activeFile.pages;
+            const copies = printOptions.copies;
+            const grandTotalPages = totalPagesToPrint * copies;
+
+            document.getElementById('totalPrintPage').innerText = totalPagesToPrint;
+            document.getElementById('copiesPrintTag').innerText = `Salinan 1 daripada ${copies}`;
+            document.getElementById('completionSection').classList.add('hidden');
+
+            const printHead = document.getElementById('printHeadAnimation');
+            const paperSheet = document.getElementById('printedPaperSheet');
+            const progressBar = document.getElementById('printProgressBar');
+            const progressPercentText = document.getElementById('printProgressPercent');
+            const printerLed = document.getElementById('printerLed');
+            const statusText = document.getElementById('printerStatusText');
+
+            printHead.classList.remove('hidden');
+            printHead.style.animation = "scanLine 0.8s infinite ease-in-out";
+
+            printerLed.className = "w-3 h-3 rounded-full bg-emerald-500 animate-pulse";
+            statusText.innerText = "RONGTA F11B sedang mencetak dokumen...";
+            statusText.className = "font-bold text-emerald-400";
+
+            let currentPageIndex = 0;
+            
+            const printInterval = setInterval(() => {
+                currentPageIndex++;
+                
+                // Play print mechanism sound effect
+                playPrinterSound();
+
+                // Animate emerging printed paper
+                paperSheet.classList.remove('opacity-0', '-translate-y-full');
+                paperSheet.classList.add('opacity-100', 'translate-y-0');
+                document.getElementById('printedPageTag').innerText = `Page ${((currentPageIndex - 1) % totalPagesToPrint) + 1}`;
+
+                // Update Progress metrics
+                const pct = Math.round((currentPageIndex / grandTotalPages) * 100);
+                progressBar.style.width = `${pct}%`;
+                progressPercentText.innerText = `${pct}%`;
+                document.getElementById('currentPrintPage').innerText = ((currentPageIndex - 1) % totalPagesToPrint) + 1;
+
+                if (currentPageIndex >= grandTotalPages) {
+                    clearInterval(printInterval);
+                    finishPrintingSequence();
+                }
+            }, 1200);
+        }
+
+        // Finish Printing Sequence & Display Receipt
+        function finishPrintingSequence() {
+            const printHead = document.getElementById('printHeadAnimation');
+            const printerLed = document.getElementById('printerLed');
+            const statusText = document.getElementById('printerStatusText');
+
+            printHead.classList.add('hidden');
+            printerLed.className = "w-3 h-3 rounded-full bg-emerald-500";
+            statusText.innerText = "Selesai! Sila ambil dokumen anda.";
+            statusText.className = "font-bold text-emerald-400";
+
+            // Fire confetti burst
+            confetti({
+                particleCount: 80,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            // Populate Digital Receipt
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + now.toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
+            
+            document.getElementById('receiptTxId').innerText = `#PP-${Math.floor(100000 + Math.random() * 900000)}`;
+            document.getElementById('receiptDateTime').innerText = dateStr;
+            document.getElementById('receiptStation').innerText = `${selectedStation.id || 'PP001'} (RONGTA F11B)`;
+            document.getElementById('receiptAmount').innerText = document.getElementById('payBtnAmount').innerText;
+
+            // Update Admin Analytics
+            const totalPaid = parseFloat(document.getElementById('payBtnAmount').innerText.replace('RM', '')) || 5.00;
+            adminStats.revenueToday += totalPaid;
+            adminStats.jobsToday += 1;
+            adminStats.paperLevel = Math.max(10, adminStats.paperLevel - activeFile.pages);
+            
+            document.getElementById('paperTrayBar').style.width = `${adminStats.paperLevel}%`;
+            document.getElementById('paperTrayLevelText').innerText = `${adminStats.paperLevel}%`;
+            document.getElementById('todayRevenueText').innerText = `RM ${adminStats.revenueToday.toFixed(2)}`;
+            document.getElementById('todayJobsText').innerText = `${adminStats.jobsToday} Pesanan`;
+
+            document.getElementById('completionSection').classList.remove('hidden');
+            showToast("Dokumen berjaya dicetak!", "fa-circle-check text-brand-400");
+        }
+
+        // Toggle Admin Owner Panel Modal
+        function toggleAdminModal() {
+            const modal = document.getElementById('adminModal');
+            modal.classList.toggle('hidden');
+        }
+
+        // Refill Paper Tray Simulation
+        function refillPaperSim() {
+            adminStats.paperLevel = 100;
+            document.getElementById('paperTrayBar').style.width = '100%';
+            document.getElementById('paperTrayLevelText').innerText = '100%';
+            showToast("Dulang kertas A4 diset semula ke 100% (500 helaian).", "fa-circle-check text-brand-400");
+        }
+
+        // Test Print Hardware
+        function testPrintHardware() {
+            toggleAdminModal();
+            loadSampleDoc('PRINTPAY_Test_Page.pdf', 1);
+            goToStep(3);
+            showToast("Mod Ujian Hardware RONGTA F11B diaktifkan.", "fa-vial text-brand-400");
+        }
+
+        // Download Simulated Receipt PDF Text
+        function downloadReceiptPdf() {
+            const receiptText = `
+========================================
+         PRINTPAY OFFICIAL RECEIPT
+       "Cetak mudah. Bayar mudah."
+========================================
+ID Transaksi : ${document.getElementById('receiptTxId').innerText}
+Tarikh/Masa  : ${document.getElementById('receiptDateTime').innerText}
+Station      : ${document.getElementById('receiptStation').innerText}
+Dokumen      : ${activeFile.name}
+Muka Surat   : ${activeFile.pages}
+Jumlah       : ${document.getElementById('receiptAmount').innerText}
+Status       : BERJAYA DICETAK (RONGTA F11B)
+========================================
+Terima kasih kerana menggunakan PrintPay!
+            `;
+
+            const blob = new Blob([receiptText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Resit_PrintPay_${document.getElementById('receiptTxId').innerText.replace('#', '')}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast("Resit berjaya dimuat turun!", "fa-circle-check text-brand-400");
+        }
+    </script>
+</body>
+</html>
