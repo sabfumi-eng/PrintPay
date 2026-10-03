@@ -18,6 +18,7 @@ video{width:100%;height:100%;object-fit:cover}.scanbox{position:absolute;left:19
 .hidden{display:none}.price{text-align:center;font-size:48px;font-weight:800;margin:15px}
 .small{font-size:14px;color:#65748b;line-height:1.5}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
 <body>
 <header><h1>PRINTPAY</h1><div>Cetak mudah. Bayar mudah.</div></header>
@@ -68,7 +69,7 @@ video{width:100%;height:100%;object-fit:cover}.scanbox{position:absolute;left:19
 <h2>🖨️ Cetakan</h2><div id="ps" class="notice">Menunggu printer...</div>
 <button onclick="location.reload()">Selesai</button>
 </section>
-<p class="small">V4: QR printer detection dibina semula. QR merchant sebenar dipaparkan. Payment & printer masih simulasi.</p>
+<p class="small">V5: Kamera 1 dan Kamera 2 menggunakan QR detector. Kamera 2 ada fallback jsQR untuk QR Boost/DuitNow. Payment & printer masih simulasi.</p>
 </div>
 
 <script>
@@ -109,9 +110,42 @@ async function openCam1(){
 document.getElementById('file').addEventListener('change',e=>{if(e.target.files[0])document.getElementById('fi').textContent="Dokumen: "+e.target.files[0].name;});
 function toPrice(){show('c')}
 function toPay(){show('d');openCam2()}
+let cam2Timer=null;
 async function openCam2(){
- try{stop(stream2);stream2=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});const v=document.getElementById('cam2');v.srcObject=stream2;await v.play();}
- catch(e){alert("Kamera 2 tidak dapat dibuka.");}
+ try{
+  stop(stream2); clearInterval(cam2Timer);
+  stream2=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
+  const v=document.getElementById('cam2'); v.srcObject=stream2; await v.play();
+  const notice=document.querySelector('#d .ok');
+  notice.textContent='🟢 Kamera 2 aktif — halakan tepat kepada QR Boost/DuitNow.';
+  const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  let detector=null;
+  if('BarcodeDetector' in window){ try{ detector=new BarcodeDetector({formats:['qr_code']}); }catch(e){} }
+  cam2Timer=setInterval(async()=>{
+   try{
+    let value='';
+    if(detector){
+      const codes=await detector.detect(v);
+      if(codes.length) value=(codes[0].rawValue||'').trim();
+    }
+    if(!value && window.jsQR){
+      canvas.width=v.videoWidth||640; canvas.height=v.videoHeight||480;
+      ctx.drawImage(v,0,0,canvas.width,canvas.height);
+      const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      if(code) value=(code.data||'').trim();
+    }
+    if(value){
+      clearInterval(cam2Timer); stop(stream2);
+      notice.textContent='✅ QR bayaran berjaya dikesan. Jangan anggap ini bukti bayaran.';
+      const box=document.getElementById('qr'); box.classList.remove('hidden');
+      const title=box.querySelector('h3'); title.textContent='QR BAYARAN DIKESAN';
+      const old=document.getElementById('qrDetected'); if(old) old.remove();
+      const info=document.createElement('div'); info.id='qrDetected'; info.className='notice'; info.textContent='QR berjaya dibaca. Untuk sistem sebenar, backend perlu sahkan transaksi sebelum cetak.'; box.appendChild(info);
+    }
+   }catch(e){}
+  },450);
+ }catch(e){alert('Kamera 2 tidak dapat dibuka. Pastikan HTTPS dan permission kamera dibenarkan.');}
 }
 function showQR(){document.getElementById('qr').classList.remove('hidden')}
 function paidDemo(){stop(stream2);show('e')}
